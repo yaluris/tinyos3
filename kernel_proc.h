@@ -23,19 +23,40 @@
 
   A PID can be either free (no process is using it), ALIVE (some running process is
   using it), or ZOMBIE (a zombie process is using it).
-  */
-typedef enum pid_state_e {
+*/
+
+typedef enum pid_state_e 
+{
+
   FREE,   /**< @brief The PID is free and available */
   ALIVE,  /**< @brief The PID is given to a process */
   ZOMBIE  /**< @brief The PID is held by a zombie */
+
 } pid_state;
+
+/***************************************************************************************************************************/
+typedef struct process_info_control_block {
+
+  procinfo process_info;
+  int pcb_cursor;
+
+} procinfo_cb;
+
+void* procinfo_open(unsigned int minor);
+int procinfo_read(void* this, char *buf, unsigned int size);
+int procinfo_write(void* this, const char *buf, unsigned int size);
+int procinfo_close(void* this);
+/***************************************************************************************************************************/
 
 /**
   @brief Process Control Block.
 
   This structure holds all information pertaining to a process.
- */
-typedef struct process_control_block {
+*/
+
+typedef struct process_control_block 
+{
+
   pid_state  pstate;      /**< @brief The pid state for this PCB */
 
   PCB* parent;            /**< @brief Parent's pcb. */
@@ -60,8 +81,38 @@ typedef struct process_control_block {
 
   FCB* FIDT[MAX_FILEID];  /**< @brief The fileid table of the process */
 
+/****************************************************************************************************************************/
+  rlnode ptcb_list;       /**< @brief List of PTCBs of this process                                                         */ 
+  int thread_count;       /**< @brief Number of threads for this process                                                    */
+/****************************************************************************************************************************/
+
 } PCB;
 
+/***************************************************************************************************************************/
+/**
+  @brief Process Thread Control Block.
+
+  This structure holds all information pertaining to a process_thread.
+*/
+typedef struct process_thread_control_block 
+{
+  
+  TCB* tcb;                /**< @brief The thread associated with the PTCB */
+
+  Task task;               /**< @brief The thread's function */
+  int argl;                /**< @brief The main thread's argument length */
+  void* args;              /**< @brief The main thread's argument string */
+
+  int exitval;             /**< @brief The exited value returned from task */
+
+  int exited;              /**< @brief 0 if PTCB not exited, 1 if exited */
+  int detached;            /**< @brief 0 if TCB of PTCB not detached, 1 if detached */
+  CondVar exit_cv;         /**< @brief For the threads waiting to be executed */
+  int refCount;            /**< @brief counts references to PTCB, so as to know when to erase it */
+  rlnode ptcb_list_node;   /**< @brief Node to use when queueing in the <PTCB> list of a PCB */
+
+} PTCB;
+/**************************************************************************************************************************/
 
 /**
   @brief Initialize the process table.
@@ -69,6 +120,7 @@ typedef struct process_control_block {
   This function is called during kernel initialization, to initialize
   any data structures related to process creation.
 */
+
 void initialize_processes();
 
 /**
@@ -81,6 +133,7 @@ void initialize_processes();
   @param pid the pid of the process 
   @returns A pointer to the PCB of the process, or NULL.
 */
+
 PCB* get_pcb(Pid_t pid);
 
 /**
@@ -93,6 +146,7 @@ PCB* get_pcb(Pid_t pid);
   @param pcb the pcb of the process 
   @returns the PID of the process, or NOPROC.
 */
+
 Pid_t get_pid(PCB* pcb);
 
 /** @} */

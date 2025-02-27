@@ -106,6 +106,11 @@ typedef struct thread_control_block {
 	Thread_state state; /**< @brief The state of the thread */
 	Thread_phase phase; /**< @brief The phase of the thread */
 
+  /***************************************************************************************************************************************/
+  int priority;         /**< @brief The priority of the thread */
+  PTCB *ptcb;           /**< @brief Create a ptcb(field) in TCBs*/
+  /***************************************************************************************************************************************/
+
 	void (*thread_func)(); /**< @brief The initial function executed by this thread */
 
 	TimerDuration wakeup_time; /**< @brief The time this thread will be woken up by the scheduler */
@@ -116,6 +121,7 @@ typedef struct thread_control_block {
 
 	enum SCHED_CAUSE curr_cause; /**< @brief The endcause for the current time-slice */
 	enum SCHED_CAUSE last_cause; /**< @brief The endcause for the last time-slice */
+
 
 #ifndef NVALGRIND
 	unsigned valgrind_stack_id; /**< @brief Valgrind helper for stacks. 

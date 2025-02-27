@@ -128,8 +128,10 @@ void* allocate_thread(size_t size)
 }
 #endif
 
-
-
+/***********************************************************************************************************************/
+#define PRIORITY_QUEUES 2000                                        /* Number of priority queues */
+#define CALLS_FOR_BOOST 2000                                /* Every 2000 calls of yield() boost threads */
+/***********************************************************************************************************************/
 
 /*
   This is the function that is used to start normal threads.
@@ -170,6 +172,10 @@ TCB* spawn_thread(PCB* pcb, void (*func)())
 	tcb->rts = QUANTUM;
 	tcb->last_cause = SCHED_IDLE;
 	tcb->curr_cause = SCHED_IDLE;
+
+/***********************************************************************************************************************/
+  tcb->priority = PRIORITY_QUEUES-1; /* The first time a thread is executed, it is placed at the highest priority queue */
+/*********************************************************************************************************************/
 
 	/* Compute the stack segment address and size */
 	void* sp = ((void*)tcb) + THREAD_TCB_SIZE;
@@ -225,7 +231,11 @@ void release_TCB(TCB* tcb)
   Both of these structures are protected by @c sched_spinlock.
 */
 
-rlnode SCHED; /* The scheduler queue */
+/******************************************************************************************************************/
+rlnode SCHED[PRIORITY_QUEUES];                                        /* The scheduler queues */
+int yield_calls = 0;                                               /* Number of calls of yield() */
+/*****************************************************************************************************************/
+
 rlnode TIMEOUT_LIST; /* The list of threads with a timeout */
 Mutex sched_spinlock = MUTEX_INIT; /* spinlock for scheduler queue */
 
@@ -267,8 +277,9 @@ static void sched_register_timeout(TCB* tcb, TimerDuration timeout)
 */
 static void sched_queue_add(TCB* tcb)
 {
-	/* Insert at the end of the scheduling list */
-	rlist_push_back(&SCHED, &tcb->sched_node);
+/********************************************************************************************************************/
+	rlist_push_back(&SCHED[tcb->priority], &tcb->sched_node);            /* Insert tcb at the end of the proper queue */
+/********************************************************************************************************************/
 
 	/* Restart possibly halted cores */
 	cpu_core_restart_one();
@@ -326,10 +337,23 @@ static void sched_wakeup_expired_timeouts()
 */
 static TCB* sched_queue_select(TCB* current)
 {
-	/* Get the head of the SCHED list */
-	rlnode* sel = rlist_pop_front(&SCHED);
+/******************************************************************************************************************************************/
+  TCB* next_thread = NULL;
+  int occupied_queue = PRIORITY_QUEUES-1;
 
-	TCB* next_thread = sel->tcb; /* When the list is empty, this is NULL */
+	while(occupied_queue != 0)      /* The first thread existing at currently highest not empty queue will be executed next */
+	{
+			if(is_rlist_empty(&SCHED[occupied_queue]))
+				occupied_queue--;
+			else
+				break;                      /* Not empty queue found */																	
+	}
+   
+	rlnode* sel = rlist_pop_front(&SCHED[occupied_queue]);   /* Get the head of the SCHED[occupied_queue] */
+   
+  if(sel != NULL)
+		next_thread = sel->tcb; /* When the list is empty, this is NULL */
+/***********************************************************************************************************************************/
 
 	if (next_thread == NULL)
 		next_thread = (current->state == READY) ? current : &CURCORE.idle_thread;
@@ -413,6 +437,10 @@ void yield(enum SCHED_CAUSE cause)
 
 	TCB* current = CURTHREAD; /* Make a local copy of current process, for speed */
 
+/***************************************************************************************************************************************/
+  yield_calls++;
+/*************************************************************************************************************************************/
+
 	Mutex_Lock(&sched_spinlock);
 
 	/* Update CURTHREAD state */
@@ -435,6 +463,51 @@ void yield(enum SCHED_CAUSE cause)
 	CURCORE.previous_thread = current;
 
 	Mutex_Unlock(&sched_spinlock);
+
+/***************************************************************************************************************************************************/
+	switch(cause)
+	{		
+		case SCHED_IO:
+			if(current->priority < PRIORITY_QUEUES-1)
+				current->priority++;
+			break;
+		
+		case SCHED_QUANTUM:
+			if(current->priority > 0)
+				current->priority--;
+			break;
+
+		case SCHED_MUTEX:
+			if(current->last_cause == SCHED_MUTEX && current->priority > 0)
+				current->priority--;
+			break;
+		
+		default:
+			break;
+	}
+
+	auto void boost() 											/* Move all threads of each queue to the immediately higher one */
+	{
+		int i = PRIORITY_QUEUES-2; 						/* Start from the second highest priority queue */
+
+		while(i >= 0)
+		{
+			while(!is_rlist_empty(&SCHED[i]))
+			{
+				rlnode* current = rlist_pop_front(&SCHED[i]);
+				current->tcb->priority++;
+				rlist_push_front(&SCHED[i+1], current);
+			}
+			i--;		
+		}
+	}
+
+	if(yield_calls == CALLS_FOR_BOOST)
+	{
+		boost();
+		yield_calls = 0;
+	}
+/*****************************************************************************************************************************************/
 
 	/* Switch contexts */
 	if (current != next) {
@@ -517,11 +590,20 @@ static void idle_thread()
 }
 
 /*
-  Initialize the scheduler queue
+  Initialize the scheduler queues
  */
 void initialize_scheduler()
 {
-	rlnode_init(&SCHED, NULL);
+/*****************************************************************************************************************************/
+	int i = 0;
+
+	while(i <= PRIORITY_QUEUES-1)
+	{
+			rlnode_init(&SCHED[i], NULL);
+			i++;
+	}
+/*********************************************************************************************************************************/
+
 	rlnode_init(&TIMEOUT_LIST, NULL);
 }
 

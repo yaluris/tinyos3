@@ -284,11 +284,16 @@ static inline void * xmalloc (size_t size)
  */
 
 
-typedef struct process_control_block PCB;	/**< @brief Forward declaration */
-typedef struct thread_control_block TCB;	/**< @brief Forward declaration */
-typedef struct core_control_block CCB;		/**< @brief Forward declaration */
-typedef struct device_control_block DCB;	/**< @brief Forward declaration */
-typedef struct file_control_block FCB;		/**< @brief Forward declaration */
+typedef struct process_control_block PCB;							/**< @brief Forward declaration */
+typedef struct thread_control_block TCB;							/**< @brief Forward declaration */
+typedef struct core_control_block CCB;								/**< @brief Forward declaration */
+typedef struct device_control_block DCB;							/**< @brief Forward declaration */
+typedef struct file_control_block FCB;								/**< @brief Forward declaration */
+/*******************************************************************************************************************************************/
+typedef struct process_thread_control_block PTCB; /**< @brief Forward declaration */
+typedef struct connection_request con_req; /**< @brief Forward declaration */																								
+/*****************************************************************************************************************************************/
+
 
 /** @brief A convenience typedef */
 typedef struct resource_list_node * rlnode_ptr;
@@ -308,9 +313,14 @@ typedef struct resource_list_node {
      TCB* tcb = mynode->tcb;
      \endcode
      */
-  union {
+  union 
+  {
     PCB* pcb; 
     TCB* tcb;
+/**********************************************************************************************************************************************/
+    PTCB* ptcb; /**< @brief Declare PTCB in union, because all of the control blocks are declared here, for simpler access(in PTCB list nodes)*/
+    con_req* cr;
+/**********************************************************************************************************************************************/
     CCB* ccb;
     DCB* dcb;
     FCB* fcb;
